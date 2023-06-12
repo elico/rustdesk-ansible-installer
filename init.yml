@@ -1,0 +1,79 @@
+---
+- hosts: localhost
+  connection: local 
+  gather_facts: true
+  vars:
+    repo: rustdesk/rustdesk-server
+    releases_url: "https://api.github.com/repos/{{ repo }}/releases/latest"
+  tasks:
+
+    - name: Retrieve latest release information
+      uri:
+        url: "{{ releases_url }}"
+        return_content: yes
+      register: latest_release
+
+    - name: Extract tag name from release information
+      set_fact:
+        tag_name: "{{ latest_release.json | to_json|from_json |json_query('assets[*].browser_download_url') }}"
+
+    - name: Map uname machine values to architecture-specific releases
+      set_fact:
+        arch_dir: >-
+          {{
+            'amd64' if ansible_architecture == 'x86_64' else
+            'arm64v8' if ansible_architecture == 'aarch64' else
+            'armv7' if ansible_architecture == 'armv7l' else
+            'i386' if ansible_architecture == 'i386' else
+            ''
+          }}
+
+    - name: "Download Urls"
+      set_fact:
+        download_urls: "{{ latest_release.json | to_json | from_json | json_query('assets[*].browser_download_url|[?contains(@, `rustdesk-server-linux`)]') }}"
+
+    - name: Extract asset download URL for the selected architecture
+      set_fact:
+        asset_url: "{{ download_urls | to_json | from_json | json_query(query) | first }}"
+      vars:
+        query: "[?contains(@, `{{arch_dir }}`)]"
+
+    - name: Download the latest release asset
+      get_url:
+        url: "{{ asset_url }}"
+        dest: "/tmp/latest-release.zip"
+
+    - name: "Erasing any existing directories"
+      file:
+        path: /tmp/rustdesk-extraction
+        state: absent
+
+
+    - name: Create a directory if it does not exist
+      file:
+        path: /tmp/rustdesk-extraction
+        state: directory
+
+    - name: Extract the downloaded asset to a temporary directory
+      unarchive:
+        src: "/tmp/latest-release.zip"
+        dest: "/tmp/rustdesk-extraction"
+        remote_src: true
+#        creates: "/tmp/rustdesk-extraction"
+
+    - name: Move the extracted files to the architecture-specific directory within the "bin" directory
+      shell: |
+        mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/hbbr" "/usr/local/bin/hbbr"
+        mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/hbbs" "/usr/local/bin/hbbs"
+        mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/rustdesk-utils" "/usr/local/bin/rustdesk-utils"
+
+    - name: Clean up the extracted files
+      file:
+        path: "/tmp/rustdesk-extraction"
+        state: absent
+
+    - name: "Erasing any existing directories"
+      file:
+        path: /tmp/rustdesk-extraction
+        state: absent
+
