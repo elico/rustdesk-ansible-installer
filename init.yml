@@ -5,19 +5,46 @@
   vars:
     repo: rustdesk/rustdesk-server
     releases_url: "https://api.github.com/repos/{{ repo }}/releases/latest"
+    ipconfig_url: "https://ipconfig.io/json"
+    public_domain: "{{ domain }}"
+    windows_aio_client_installer: "https://raw.githubusercontent.com/dinger1986/rustdeskinstall/master/WindowsAgentAIOInstall.ps1"
+    windows_aio_client_installer_checksum: "sha256:c1654abcc74b0a0612b9ed057b6ea0e6db62881c2afa92ed409cb262a0ca5e03"
+    linux_client_installer: "https://raw.githubusercontent.com/dinger1986/rustdeskinstall/master/linuxclientinstall.sh"
+    linux_client_installer_checksum: "sha256:476b48f5cd0c2bb3e0e08fe7390788b838bb5d2a9bd2f5a6e6aa2bb93ddc8f58"
   tasks:
 
-    - name: Retrieve latest release information
+    - name: "Retrieving server current public IP from ipconfig.io/json"
+      uri:
+        url: "{{ ipconfig_url }}"
+        return_content: yes
+      register: ipconfig_json
+
+    - name: "Extracting public IP address from ipconfig.io/json output"
+      set_fact:
+        public_ip: "{{ ipconfig_json.json | to_json | from_json |json_query('ip') }}"
+
+    - debug:
+        msg: "{{ public_ip }}"
+
+    - name: "Setting public IP address from the domain variable"
+      set_fact:
+        public_ip: "{{ public_domain }}"
+      when: public_domain is defined and public_domain | length > 0
+
+    - debug:
+        msg: "{{ public_ip }}"
+
+    - name: "Retriving latest rustdesk-server release information"
       uri:
         url: "{{ releases_url }}"
         return_content: yes
       register: latest_release
 
-    - name: Extract tag name from release information
+    - name: "Extracting tag name from rustdesk-server release information"
       set_fact:
         tag_name: "{{ latest_release.json | to_json|from_json |json_query('assets[*].browser_download_url') }}"
 
-    - name: Map uname machine values to architecture-specific releases
+    - name: "Mapping uname machine values to architecture-specific releases"
       set_fact:
         arch_dir: >-
           {{
@@ -28,60 +55,61 @@
             ''
           }}
 
-    - name: "Download Urls"
+    - name: "Filtering Download Urls for the rustdesk-server-linux"
       set_fact:
         download_urls: "{{ latest_release.json | to_json | from_json | json_query('assets[*].browser_download_url|[?contains(@, `rustdesk-server-linux`)]') }}"
 
-    - name: Extract asset download URL for the selected architecture
+    - name: "Extracting download URL for the selected architecture"
       set_fact:
         asset_url: "{{ download_urls | to_json | from_json | json_query(query) | first }}"
       vars:
         query: "[?contains(@, `{{arch_dir }}`)]"
 
-    - name: Download the latest release asset
+    - name: "Downloading rustdesk-sever latest release zip"
       get_url:
         url: "{{ asset_url }}"
         dest: "/tmp/latest-release.zip"
 
-    - name: "Erasing any existing directories"
+    - name: "Erasing any existing tmp directories"
       file:
         path: /tmp/rustdesk-extraction
         state: absent
 
 
-    - name: Create a directory if it does not exist
+    - name: "Create the tmp directory if it does not exist"
       file:
         path: /tmp/rustdesk-extraction
         state: directory
 
-    - name: Extract the downloaded asset to a temporary directory
+    - name: "Extracting rustdesk-server to the temporary directory"
       unarchive:
         src: "/tmp/latest-release.zip"
         dest: "/tmp/rustdesk-extraction"
         remote_src: true
 #        creates: "/tmp/rustdesk-extraction"
 
-    - name: 'Move the extracted files to the architecture-specific directory within the "bin" directory'
+    - name: 'Moving the extracted files of the architecture-specific directory to the the "/usr/local/bin" directory'
       shell: |
         mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/hbbr" "/usr/local/bin/hbbr"
         mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/hbbs" "/usr/local/bin/hbbs"
         mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/rustdesk-utils" "/usr/local/bin/rustdesk-utils"
 
-    - name: Clean up the extracted files
+    - name: "Cleaning up the tmp directory"
       file:
         path: "/tmp/rustdesk-extraction"
         state: absent
 
-    - name: "Erasing any existing directories"
+    - name: "Cleaning up latest-release tmp file"
       file:
-        path: /tmp/rustdesk-extraction
+        path: "/tmp/latest-release.zip"
         state: absent
-    - name: "Create a directory if it does not exist"
+
+    - name: "Creating /opt/rustdesk directory if it does not exist"
       file:
         path: /opt/rustdesk
         state: directory
 
-    - name: "Create a directory if it does not exist"
+    - name: "Creating /var/log/rustdesk directory if it does not exist"
       file:
         path: /var/log/rustdesk
         state: directory
@@ -96,14 +124,14 @@
         src: hbbr.service
         dest: /etc/systemd/system/hbbr.service
 
-    - name: "Restart service hbbr"
+    - name: "Restarting service hbbr"
       systemd:
         state: restarted
         daemon_reload: true
         name: hbbr
         enabled: true
 
-    - name: "Restart service hbbs"
+    - name: "Restarting service hbbs"
       systemd:
         state: restarted
         daemon_reload: true
@@ -111,14 +139,14 @@
         enabled: true
 
 
-    - name: "Install latest version of Apache"
+    - name: "Installing latest version of Apache"
       apt:
         name: apache2
         update_cache: yes
         state: latest
       when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
 
-    - name: "Install latest version of httpd"
+    - name: "Installing latest version of httpd"
       dnf:
         name: httpd
         update_cache: yes
@@ -126,16 +154,54 @@
       when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux' or ansible_distribution == "AlmaLinux"
 
 
-    - name: "restart and enable apache"
+    - name: "Restarting and Enabling apache"
       service: 
         name: apache2 
         state: started 
         enabled: yes
       when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
 
-    - name: "restart and enable httpd"
+    - name: "Restarting and Enabling httpd"
       service: 
         name: httpd 
         state: started 
         enabled: yes
       when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux' or ansible_distribution == "AlmaLinux"
+
+    - name: "Extracting public KEY from: /opt/rustdesk/id_ed25519.pub"
+      shell: head -1 "/opt/rustdesk/id_ed25519.pub"
+      register: public_key
+
+    - name: "Downloading WindowsAIO Installer"
+      ansible.builtin.get_url:
+        url: "{{ windows_aio_client_installer }}"
+        dest: "/var/www/html/WindowsAgentAIOInstall.ps1"
+        checksum: "{{ windows_aio_client_installer_checksum }}"
+
+    - name: "Replace public IP in the Windows AIO script"
+      shell: sed -i "s|wanipreg|{{ public_ip }}|g" "/var/www/html/WindowsAgentAIOInstall.ps1"
+
+    - name: "Replace public key in the Windows AIO script"
+      shell: sed -i "s|keyreg|{{ public_key.stdout }}|g" "/var/www/html/WindowsAgentAIOInstall.ps1"
+
+
+    - name: "Downloading linux Client Installer"
+      ansible.builtin.get_url:
+        url: "{{ linux_client_installer }}"
+        dest: "/var/www/html/linuxclientinstall.sh"
+        checksum: "{{ linux_client_installer_checksum }}"
+
+    - name: "Replace public IP in the linux client installer script"
+      shell: sed -i "s|wanipreg|{{ public_ip }}|g" "/var/www/html/linuxclientinstall.sh"
+
+    - name: "Replace public key in the linux client installer script"
+      shell: sed -i "s|keyreg|{{ public_key.stdout }}|g" "/var/www/html/linuxclientinstall.sh"
+
+    - name: 'Copying public key to the /var/www/html folder'
+      copy:
+        src: /opt/rustdesk/id_ed25519.pub
+        dest: /var/www/html/id_ed25519.pub
+
+    - debug:
+        msg: "The public key can be downloaded from: http://{{ public_ip }}/id_ed25519.pub"
+
