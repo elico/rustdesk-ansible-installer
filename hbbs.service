@@ -5,7 +5,7 @@ Description=Rustdesk Signal Server
 Type=simple
 LimitNOFILE=1000000
 
-ExecStart=/opt/rustdesk/hbbs -k _
+ExecStart=/usr/local/bin/hbbs -k _
 WorkingDirectory=/opt/rustdesk/
 #User=root
 #Group=root

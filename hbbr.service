@@ -4,7 +4,7 @@ Description=Rustdesk Relay Server
 [Service]
 Type=simple
 LimitNOFILE=1000000
-ExecStart=/opt/rustdesk/hbbr -k _
+ExecStart=/usr/local/bin/hbbr -k _
 WorkingDirectory=/opt/rustdesk/
 #User=root
 #Group=root
