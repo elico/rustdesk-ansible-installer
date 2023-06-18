@@ -1,0 +1,19 @@
+[Unit]
+Description=Rustdesk Relay Server
+
+[Service]
+Type=simple
+LimitNOFILE=1000000
+ExecStart=/opt/rustdesk/hbbr -k _
+WorkingDirectory=/opt/rustdesk/
+#User=root
+#Group=root
+Restart=always
+StandardOutput=append:/var/log/rustdesk/relayserver.log
+StandardError=append:/var/log/rustdesk/relayserver.error
+
+# Restart service after 10 seconds if node service crashes
+RestartSec=10
+[Install]
+
+WantedBy=multi-user.target

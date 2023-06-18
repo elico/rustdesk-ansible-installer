@@ -61,7 +61,7 @@
         remote_src: true
 #        creates: "/tmp/rustdesk-extraction"
 
-    - name: Move the extracted files to the architecture-specific directory within the "bin" directory
+    - name: 'Move the extracted files to the architecture-specific directory within the "bin" directory'
       shell: |
         mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/hbbr" "/usr/local/bin/hbbr"
         mv -fv "/tmp/rustdesk-extraction/{{ arch_dir }}/hbbs" "/usr/local/bin/hbbs"
@@ -76,4 +76,66 @@
       file:
         path: /tmp/rustdesk-extraction
         state: absent
+    - name: "Create a directory if it does not exist"
+      file:
+        path: /opt/rustdesk
+        state: directory
 
+    - name: "Create a directory if it does not exist"
+      file:
+        path: /var/log/rustdesk
+        state: directory
+
+    - name: 'Installing hbbs service files'
+      copy:
+        src: hbbs.service
+        dest: /etc/systemd/system/hbbs.service
+
+    - name: 'Installing hbbr service files'
+      copy:
+        src: hbbr.service
+        dest: /etc/systemd/system/hbbr.service
+
+    - name: "Restart service hbbr"
+      systemd:
+        state: restarted
+        daemon_reload: true
+        name: hbbr
+        enabled: true
+
+    - name: "Restart service hbbs"
+      systemd:
+        state: restarted
+        daemon_reload: true
+        name: hbbs
+        enabled: true
+
+
+    - name: "Install latest version of Apache"
+      apt:
+        name: apache2
+        update_cache: yes
+        state: latest
+      when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+
+    - name: "Install latest version of httpd"
+      dnf:
+        name: httpd
+        update_cache: yes
+        state: latest
+      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux' or ansible_distribution == "AlmaLinux"
+
+
+    - name: "restart and enable apache"
+      service: 
+        name: apache2 
+        state: started 
+        enabled: yes
+      when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+
+    - name: "restart and enable httpd"
+      service: 
+        name: httpd 
+        state: started 
+        enabled: yes
+      when: ansible_distribution == 'CentOS' or ansible_distribution == 'Red Hat Enterprise Linux' or ansible_distribution == "AlmaLinux"
